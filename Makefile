@@ -38,7 +38,7 @@ endif
 		gotestsum --format=short-verbose --junitfile=tmp/integration-report.xml -- $(testintegargs) "./opensearchtransport" "./opensearchapi" "./opensearchutil"; \
 	else \
 		echo "go test -v" $(testintegargs) "."; \
-		go test -v $(testintegargs) "./opensearchtransport" "./opensearchapi" "./opensearchutil"; \
+		go test -v $(testintegargs) "." "./opensearchtransport" "./opensearchapi" "./opensearchutil"; \
 	fi;
 
 test-integ-secure: ##Run secure integration tests
