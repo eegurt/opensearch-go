@@ -23,9 +23,9 @@ import (
 	"os"
 	"strings"
 
-	opensearch "github.com/opensearch-project/opensearch-go/v2"
-	opensearchapi "github.com/opensearch-project/opensearch-go/v2/opensearchapi"
-	opensearchutil "github.com/opensearch-project/opensearch-go/v2/opensearchutil"
+	"github.com/opensearch-project/opensearch-go/v2"
+	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
+	"github.com/opensearch-project/opensearch-go/v2/opensearchutil"
 )
 
 const IndexName = "go-test-index1"
@@ -38,22 +38,30 @@ func main() {
 }
 
 func example() error {
-
 	// Initialize the client with SSL/TLS enabled.
-	client, err := opensearch.NewClient(opensearch.Config{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // For testing only. Use certificate for validation.
+	client, err := opensearchapi.NewClient(
+		opensearchapi.Config{
+			Client: opensearch.Config{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // For testing only. Use certificate for validation.
+				},
+				Addresses: []string{"https://localhost:9200"},
+				Username:  "admin", // For testing only. Don't store credentials in code.
+				Password:  "admin",
+			},
 		},
-		Addresses: []string{"https://localhost:9200"},
-		Username:  "admin", // For testing only. Don't store credentials in code.
-		Password:  "admin",
-	})
+	)
 	if err != nil {
 		return err
 	}
 
+	ctx := context.Background()
 	// Print OpenSearch version information on console.
-	fmt.Println(client.Info())
+	infoResp, err := client.Info(ctx, nil)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Cluster INFO:\n  Cluster Name: %s\n  Cluster UUID: %s\n  Version Number: %s\n", infoResp.ClusterName, infoResp.ClusterUUID, infoResp.Version.Number)
 
 	// Define index mapping.
         // Note: these particular settings (eg, shards/replicas)
@@ -67,13 +75,12 @@ func example() error {
 	}`)
 
 	// Create an index with non-default settings.
-	createIndex := opensearchapi.IndicesCreateRequest{
+	createIndex := opensearchapi.IndicesCreateReq{
 		Index: IndexName,
 		Body:  mapping,
 	}
-	ctx := context.Background()
-	var opensearchError *opensearchapi.Error
-	createIndexResponse, err := createIndex.Do(ctx, client)
+	var opensearchError opensearchapi.Error
+	createIndexResponse, err := client.Indices.Create(ctx, createIndex)
 	// Load err into opensearchapi.Error to access the fields and tolerate if the index already exists
 	if err != nil {
 		if errors.As(err, &opensearchError) {
@@ -84,7 +91,7 @@ func example() error {
 			return err
 		}
 	}
-	fmt.Println(createIndexResponse)
+	fmt.Printf("Created Index: %s\n  Shards Acknowledged: %t\n", createIndexResponse.Index, createIndexResponse.ShardsAcknowledged)
 
 	// When using a structure, the conversion process to io.Reader can be omitted using utility functions.
 	document := struct {
@@ -98,16 +105,16 @@ func example() error {
 	}
 
 	docId := "1"
-	req := opensearchapi.IndexRequest{
+	req := opensearchapi.IndexReq{
 		Index:      IndexName,
 		DocumentID: docId,
 		Body:       opensearchutil.NewJSONReader(&document),
 	}
-	insertResponse, err := req.Do(ctx, client)
+	insertResp, err := client.Index(ctx, req)
 	if err != nil {
 		return err
 	}
-	fmt.Println(insertResponse)
+	fmt.Printf("Created document in %s\n  ID: %s\n", insertResp.Index, insertResp.ID)
 
 	// Search for the document.
 	content := strings.NewReader(`{
@@ -120,47 +127,62 @@ func example() error {
 	    }
 	}`)
 
-	search := opensearchapi.SearchRequest{
+	search := opensearchapi.SearchReq{
 		Body: content,
 	}
 
-	searchResponse, err := search.Do(ctx, client)
+	searchResp, err := client.Search(ctx, &search)
 	if err != nil {
 		return err
 	}
-	fmt.Println(searchResponse)
-
-	// Delete the document.
-	deleteReq := opensearchapi.DeleteRequest{
-		Index:      IndexName,
-		DocumentID: docId,
+	if searchResp.Hits.Total.Value > 0 {
+		indices := make([]string, 0)
+		for _, hit := range searchResp.Hits.Hits {
+			add := true
+			for _, index := range indices {
+				if index == hit.Index {
+					add = false
+				}
+			}
+			if add {
+				indices = append(indices, hit.Index)
+			}
+		}
+		fmt.Printf("Search indices: %s\n", strings.Join(indices, ","))
 	}
 
-	deleteResponse, err := deleteReq.Do(ctx, client)
-	if err != nil {
-		return err
-	}
-	fmt.Println("deleting document")
-	fmt.Println(deleteResponse)
+	/*
+		// Delete the document.
+		deleteReq := opensearchapi.DeleteReq{
+			Index:      IndexName,
+			DocumentID: docId,
+		}
 
+		deleteResponse, err := client.Indices.Delete(ctx, deleteReq)
+		if err != nil {
+			return err
+		}
+		fmt.Println("deleting document")
+		fmt.Println(deleteResponse)
+	*/
 	// Delete previously created index.
-	deleteIndex := opensearchapi.IndicesDeleteRequest{
+	deleteIndex := opensearchapi.IndicesDeleteReq{
 		Index: []string{IndexName},
 	}
 
-	deleteIndexResponse, err := deleteIndex.Do(ctx, client)
+	deleteIndexResp, err := client.Indices.Delete(ctx, deleteIndex)
 	if err != nil {
 		return err
 	}
-	fmt.Println("deleting index", deleteIndexResponse)
+	fmt.Println(fmt.Sprintf("Deleted index: %t", deleteIndexResp.Acknowledged))
 
 	// Try to delete the index again which failes as it does not exist
 	// Load err into opensearchapi.Error to access the fields and tolerate if the index is missing
-	_, err = deleteIndex.Do(ctx, client)
+	_, err = client.Indices.Delete(ctx, deleteIndex)
 	if err != nil {
 		if errors.As(err, &opensearchError) {
 			if opensearchError.Err.Type != "index_not_found_exception" {
-				return err
+				return nil
 			}
 		} else {
 			return err
