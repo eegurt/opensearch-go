@@ -212,7 +212,7 @@ cluster.clean: ## Remove unused Docker volumes and networks
 	docker system prune --volumes --force
 
 linters:
-	./bin/golangci-lint run ./... --timeout=5m
+	golangci-lint run ./... --timeout=5m
 
 workflow: ## Run all github workflow commands here sequentially
 
