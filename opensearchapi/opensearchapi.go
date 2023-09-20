@@ -50,6 +50,7 @@ type Client struct {
 	Script            scriptClient
 	ComponentTemplate componentTemplateClient
 	IndexTemplate     indexTemplateClient
+	Template          templateClient
 	DataStream        dataStreamClient
 }
 
@@ -72,6 +73,7 @@ func clientInit(rootClient *opensearch.Client) *Client {
 	client.Document = documentClient{apiClient: client}
 	client.ComponentTemplate = componentTemplateClient{apiClient: client}
 	client.IndexTemplate = indexTemplateClient{apiClient: client}
+	client.Template = templateClient{apiClient: client}
 	client.DataStream = dataStreamClient{apiClient: client}
 
 	return client
