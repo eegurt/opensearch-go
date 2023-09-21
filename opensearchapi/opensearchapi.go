@@ -52,6 +52,7 @@ type Client struct {
 	IndexTemplate     indexTemplateClient
 	Template          templateClient
 	DataStream        dataStreamClient
+	PointInTime       pointInTimeClient
 }
 
 // clientInit inits the Client with all sub clients
@@ -75,6 +76,7 @@ func clientInit(rootClient *opensearch.Client) *Client {
 	client.IndexTemplate = indexTemplateClient{apiClient: client}
 	client.Template = templateClient{apiClient: client}
 	client.DataStream = dataStreamClient{apiClient: client}
+	client.PointInTime = pointInTimeClient{apiClient: client}
 
 	return client
 }
